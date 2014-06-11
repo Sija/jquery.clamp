@@ -6,8 +6,16 @@
 ###
 TextOverflowClamp.js
 
+Updated 2014-06-07 to fix word measurement bug (off by -1).
+Updated 2014-05-08 to improve speed and fix some bugs.
 Updated 2013-05-09 to remove jQuery dependancy.
+
 But be careful with webfonts!
+
+NEW!
+- Support for padding.
+- Support for nearby floated elements.
+- Support for text-indent.
 ###
 
 define ->
@@ -26,6 +34,13 @@ define ->
     return
   ) measure.style
 
+  # width element calculates the width of each line
+  width = ce('span')
+  widthChild = ce('span')
+  widthChild.style.display  = 'block'
+  widthChild.style.overflow = 'hidden'
+  widthChild.appendChild ctn("\u2060")
+
   clamp = (el, lineClamp = 2) ->
 
     # make sure the element belongs to the document
@@ -35,15 +50,41 @@ define ->
     lineStart = wordStart = 0
     lineCount = 1
     wasNewLine = no
-    lineWidth = el.clientWidth
+    # lineWidth = el.clientWidth
+    lineWidth = []
 
     # get all the text, remove any line changes
-    text = (el.textContent or el.innerText).replace(/\n/g, ' ')
-    # append space at the end to match all the words
+    text = (el.textContent or el.innerText).replace /\n/g, ' '
+
+    # append space at the end to match all of the words
     text += ' '
 
+    # create a child block element that accounts for floats
+    i = 1
+    while i < lineClamp
+      newWidthChild = widthChild.cloneNode(true)
+      width.appendChild newWidthChild
+      widthChild.style.textIndent = 0 if i is 1
+      i++
+    widthChild.style.textIndent = ''
+
     # remove all content
-    el.removeChild el.firstChild while el.firstChild isnt null
+    el.removeChild el.firstChild while el.firstChild
+
+    # ready for width calculating magic
+    el.appendChild width
+
+    # then start calculating widths of each line
+    i = 0
+    while i < lineClamp - 1
+      lineWidth.push width.childNodes[i].clientWidth
+      i++
+
+    # we are done, no need for this anymore
+    el.removeChild width
+
+    # cleanup the lines
+    width.removeChild width.firstChild while width.firstChild
 
     # add measurement element within so it inherits styles
     el.appendChild measure
@@ -58,7 +99,7 @@ define ->
       measure.appendChild ctn(text.substr(lineStart, pos - lineStart))
 
       # have we exceeded allowed line width?
-      if lineWidth < measure.clientWidth
+      if lineWidth[lineCount - 1] <= measure.clientWidth
 
         if wasNewLine
           # we have a long word so it gets a line of it's own
@@ -76,7 +117,6 @@ define ->
 
         # create a line element
         line = ce('span')
-        line.style.whiteSpace = 'nowrap'
 
         # add text to the line element
         line.appendChild ctn(lineText)
@@ -105,15 +145,18 @@ define ->
     # create the last line element
     line = ce('span')
 
-    # give styles required for text-overflow to kick in
-    ((s) ->
-      s.display = 'block'
-      s.overflow = 'hidden'
-      s.textOverflow = 'ellipsis'
-      s.whiteSpace = 'nowrap'
-      s.width = '100%'
-      return
-    ) line.style
+    # see if we need to add styles
+    if lineCount is lineClamp
+
+      # give styles required for text-overflow to kick in
+      ((s) ->
+        s.display       = 'block'
+        s.overflow      = 'hidden'
+        s.textOverflow  = 'ellipsis'
+        s.whiteSpace    = 'nowrap'
+        s.textIndent    = 0
+        return
+      ) line.style
 
     # add all remaining text to the line element
     line.appendChild ctn(text.substr(lineStart))
